@@ -1,22 +1,12 @@
 package st.coo.memo.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
-import com.google.common.base.Stopwatch;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.gson.Gson;
+import com.mybatisflex.core.audit.http.HttpUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.row.Db;
 import com.mybatisflex.core.row.Row;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.util.EntityUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -31,13 +21,11 @@ import st.coo.memo.dto.memo.*;
 import st.coo.memo.dto.resource.ResourceDto;
 import st.coo.memo.entity.*;
 import st.coo.memo.mapper.*;
+import st.coo.memo.util.JsonUtil;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static st.coo.memo.entity.table.Tables.*;
@@ -45,10 +33,6 @@ import static st.coo.memo.entity.table.Tables.*;
 @Slf4j
 @Component
 public class MemoService {
-
-    private final static Splitter SPLITTER = Splitter.onPattern("[\n]");
-    private final static Splitter TAG_SPLITTER = Splitter.onPattern("[(\\s+),]").omitEmptyStrings();
-
 
     @Resource
     private MemoMapperExt memoMapper;
@@ -82,8 +66,6 @@ public class MemoService {
 
     @Value("${MBLOG_EMBED:}")
     private String embed;
-    @Resource
-    private HttpClient httpClient;
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
@@ -98,7 +80,7 @@ public class MemoService {
             throw new BizException(ResponseCode.fail, "不能删除其他人的记录");
         }
         if (StringUtils.hasText(tMemo.getTags())) {
-            List<String> tags = Splitter.on(",").splitToList(tMemo.getTags());
+            String[] tags = tMemo.getTags().split(",");
             for (String tag : tags) {
                 tagMapper.decrementTagCount(StpUtil.getLoginIdAsInt(), tag);
             }
@@ -110,7 +92,7 @@ public class MemoService {
         TUser user = userMapper.selectOneById(StpUtil.getLoginIdAsInt());
 
         threadPoolTaskExecutor.execute(() -> {
-            pushOfficialSquare(tMemo,user,MemoType.REMOVE);
+            pushOfficialSquare(tMemo, user, MemoType.REMOVE);
         });
     }
 
@@ -134,7 +116,8 @@ public class MemoService {
         if (!StringUtils.hasText(content)) {
             return "";
         }
-        List<String> lines = Lists.newArrayList(Splitter.on("\n").splitToList(content));
+
+        List<String> lines = new ArrayList<>(Arrays.asList(content.split("\n")));
         String firstLine = lines.get(0);
         if (!StringUtils.hasText(firstLine)) {
             return "";
@@ -147,7 +130,7 @@ public class MemoService {
         } else {
             lines.set(0, firstLine);
         }
-        return Joiner.on("\n").join(lines);
+        return String.join("\n", lines);
     }
 
     private void checkContentAndResource(String content, List<String> resourceId) {
@@ -162,7 +145,7 @@ public class MemoService {
         String content = saveMemoRequest.getContent();
         TMemo tMemo = new TMemo();
         tMemo.setUserId(StpUtil.getLoginIdAsInt());
-        tMemo.setTags(Joiner.on(",").join(tags) + (tags.size() > 0 ? "," : ""));
+        tMemo.setTags(tags.stream().collect(Collectors.joining(",", "", ",")));
         if (saveMemoRequest.getVisibility() != null) {
             tMemo.setVisibility(saveMemoRequest.getVisibility().name());
         }
@@ -171,7 +154,7 @@ public class MemoService {
         tMemo.setCreated(new Timestamp(System.currentTimeMillis()));
         tMemo.setUpdated(new Timestamp(System.currentTimeMillis()));
         tMemo.setSource(saveMemoRequest.getSource());
-        List<TTag> existsTagList = tags.size() == 0 ? Lists.newArrayList() : tagMapper.selectListByQuery(QueryWrapper.create().
+        List<TTag> existsTagList = tags.size() == 0 ? new ArrayList() : tagMapper.selectListByQuery(QueryWrapper.create().
                 and(T_TAG.NAME.in(tags)).
                 and(T_TAG.USER_ID.eq(StpUtil.getLoginIdAsInt())));
 
@@ -222,43 +205,36 @@ public class MemoService {
             } else {
                 url = url + "/api/memo/push";
             }
-            HttpPost request = new HttpPost(url);
-
+            Map<String, String> headers = new HashMap(1);
             if (StringUtils.hasText(token)) {
-                request.setHeader("token", token);
+                headers.put("token", token);
             }
-
-            request.setHeader("content-type", "application/json;charset=utf8");
-
             String backendUrl = sysConfigService.getString(SysConfigConstant.DOMAIN);
 
             List<TResource> list = resourceMapper.selectListByQuery(QueryWrapper.create().and(T_RESOURCE.MEMO_ID.eq(memo.getId())));
-            Gson gson = new Gson();
             String corsDomainList = sysConfigService.getString(SysConfigConstant.CORS_DOMAIN_LIST);
 
-            Map<String, Object> map = Maps.newHashMap();
+            Map<String, Object> map = new HashMap();
             map.put("content", memo.getContent());
             map.put("tags", memo.getTags());
             map.put("publishTime", memo.getCreated().getTime());
             map.put("author", user.getDisplayName());
-            if (StringUtils.hasText(embed) && StringUtils.hasText(backendUrl)){
-                map.put("website",backendUrl);
-            }else if (!StringUtils.hasText(embed) && StringUtils.hasText(corsDomainList)){
+            if (StringUtils.hasText(embed) && StringUtils.hasText(backendUrl)) {
+                map.put("website", backendUrl);
+            } else if (!StringUtils.hasText(embed) && StringUtils.hasText(corsDomainList)) {
                 map.put("website", corsDomainList.split(",")[0]);
             }
             map.put("memoId", memo.getId());
             map.put("avatarUrl", user.getAvatarUrl());
             map.put("userId", user.getId());
             map.put("resources", list.stream().map(r -> convertToResourceDto(backendUrl, r)).toList());
-            String body = gson.toJson(map);
+            String body = JsonUtil.toJson(map);
             log.info("发送webhook到 {} ,body:{}", url, body);
-            Stopwatch stopwatch = Stopwatch.createStarted();
+            long curTime = System.currentTimeMillis();
             try {
-                request.setEntity(new StringEntity(body, StandardCharsets.UTF_8));
-                HttpResponse httpResponse = httpClient.execute(request);
-                String response = EntityUtils.toString(httpResponse.getEntity());
-                log.info("发送webhook成功,返回码:{},body:{},耗时:{}ms", httpResponse.getStatusLine().getStatusCode(),response, stopwatch.elapsed(TimeUnit.MILLISECONDS));
-            } catch (IOException e) {
+                String response = HttpUtil.post(url, body, headers);
+                log.info("发送webhook结果,body:{},耗时:{}ms", response, System.currentTimeMillis() - curTime);
+            } catch (Exception e) {
                 log.error("发送webhook异常", e);
             }
         }
@@ -267,39 +243,31 @@ public class MemoService {
 
     public void notifyWebhook(TMemo memo) {
         String url = sysConfigService.getString(SysConfigConstant.WEB_HOOK_URL);
-        String token = sysConfigService.getString(SysConfigConstant.WEB_HOOK_TOKEN);
-
         if (Objects.equals(memo.getVisibility(), Visibility.PUBLIC.name()) && StringUtils.hasText(url)) {
-            HttpPost request = new HttpPost(url);
-
-            if (StringUtils.hasText(token)) {
-                request.setHeader("token", token);
-            }
-
-            request.setHeader("content-type", "application/json;charset=utf8");
-
+            String token = sysConfigService.getString(SysConfigConstant.WEB_HOOK_TOKEN);
             TUser user = userMapper.selectOneById(memo.getUserId());
             String backendUrl = sysConfigService.getString(SysConfigConstant.DOMAIN);
 
             List<TResource> list = resourceMapper.selectListByQuery(QueryWrapper.create().and(T_RESOURCE.MEMO_ID.eq(memo.getId())));
             List<String> resources = list.stream().map(ele -> "%s/api/resource/%s".formatted(backendUrl, ele.getPublicId())).toList();
-            Gson gson = new Gson();
-
-            Map<String, Object> map = Maps.newHashMap();
+            Map<String, Object> map = new HashMap<>();
             map.put("content", memo.getContent());
             map.put("tags", memo.getTags());
             map.put("created", memo.getCreated());
             map.put("authorName", user.getDisplayName());
             map.put("resources", resources);
-            String body = gson.toJson(map);
+            String body = JsonUtil.toJson(map);
             log.info("发送webhook到{},body:{}", url, body);
-            Stopwatch stopwatch = Stopwatch.createStarted();
+            Map<String, String> headers = null;
+            if (StringUtils.hasText(token)) {
+                headers = new HashMap<>(1);
+                headers.put("token", token);
+            }
+            long curTime = System.currentTimeMillis();
             try {
-                request.setEntity(new StringEntity(body));
-                HttpResponse httpResponse = httpClient.execute(request);
-                EntityUtils.consumeQuietly(httpResponse.getEntity());
-                log.info("发送webhook成功,返回码:{},耗时:{}ms", httpResponse.getStatusLine().getStatusCode(), stopwatch.elapsed(TimeUnit.MILLISECONDS));
-            } catch (IOException e) {
+                String response = HttpUtil.post(url, body, headers);
+                log.info("发送webhook结果,body:{},耗时:{}ms", response, System.currentTimeMillis() - curTime);
+            } catch (Exception e) {
                 log.error("发送webhook异常", e);
             }
         }
@@ -317,7 +285,7 @@ public class MemoService {
         TMemo tMemo = new TMemo();
         tMemo.setId(existMemo.getId());
         List<String> tags = parseTags(updateMemoRequest.getContent());
-        tMemo.setTags(Joiner.on(",").join(tags) + (tags.size() > 0 ? "," : ""));
+        tMemo.setTags(tags.stream().collect(Collectors.joining(",", "", ",")));
         tMemo.setContent(replaceFirstLine(content, tags).trim());
         tMemo.setEnableComment(updateMemoRequest.isEnableComment() ? 1 : 0);
         tMemo.setUpdated(new Timestamp(System.currentTimeMillis()));
@@ -328,7 +296,7 @@ public class MemoService {
         List<TTag> existsTagList;
         List<String> oldTagList = new ArrayList<>();
         if (StringUtils.hasText(oldTags)) {
-            oldTagList = Splitter.on(",").omitEmptyStrings().splitToList(oldTags);
+            oldTagList = Arrays.stream(oldTags.split(",")).filter(StringUtils::hasText).map(String::trim).collect(Collectors.toList());
         }
         if (!CollectionUtils.isEmpty(tags)) {
             existsTagList = tagMapper.selectListByQuery(QueryWrapper.create().
@@ -336,7 +304,7 @@ public class MemoService {
                     and(T_TAG.USER_ID.eq(StpUtil.getLoginIdAsInt())));
             tags.removeAll(existsTagList.stream().map(TTag::getName).toList());
         } else {
-            existsTagList = Lists.newArrayList();
+            existsTagList = Collections.emptyList();
         }
 
         List<String> finalOldTagList = oldTagList;
@@ -377,23 +345,22 @@ public class MemoService {
         return existMemo.getId();
     }
 
-    private List<String> parseTags(String content) {
+    public static List<String> parseTags(String content) {
         if (!StringUtils.hasText(content)) {
-            return Lists.newArrayList();
+            return Collections.emptyList();
         }
-        List<String> list = SPLITTER.splitToList(content);
-        if (CollectionUtils.isEmpty(list)) {
-            return Lists.newArrayList();
+        String[] list = content.split("\n");
+        if (list == null || list.length == 0) {
+            return Collections.emptyList();
         }
-        String firstLine = list.get(0);
+        String firstLine = list[0];
 
-        List<String> result = TAG_SPLITTER.splitToList(firstLine);
-        if (CollectionUtils.isEmpty(result)) {
-            return Lists.newArrayList();
+        String[] result = firstLine.split("\\s+");
+        if (result == null || result.length == 0) {
+            return Collections.emptyList();
         }
-        return result.stream().filter(r -> r.startsWith("#") && r.length() > 1).collect(Collectors.toList());
+        return Arrays.stream(result).filter(r -> r.startsWith("#") && r.length() > 1).collect(Collectors.toList());
     }
-
 
     @Transactional
     public ListMemoResponse listNormal(ListMemoRequest listMemoRequest) {
@@ -404,7 +371,7 @@ public class MemoService {
         }
         listMemoRequest.setDbType(dbType);
         long total = memoMapper.countMemos(listMemoRequest);
-        List<MemoDto> list = Lists.newArrayList();
+        List<MemoDto> list = new ArrayList<>();
         if (total > 0) {
             list = memoMapper.listMemos(listMemoRequest);
             for (MemoDto memo : list) {
@@ -433,10 +400,10 @@ public class MemoService {
         boolean isLogin = StpUtil.isLogin();
         QueryWrapper queryWrapper = QueryWrapper.create().and(T_MEMO.ID.eq(id));
         if (isLogin) {
-            queryWrapper.and(T_MEMO.VISIBILITY.in(Lists.newArrayList(Visibility.PUBLIC.name(), Visibility.PROTECT.name()))
+            queryWrapper.and(T_MEMO.VISIBILITY.in(List.of(Visibility.PUBLIC.name(), Visibility.PROTECT.name()))
                     .or(T_MEMO.USER_ID.eq(StpUtil.getLoginIdAsInt()).and(T_MEMO.VISIBILITY.eq(Visibility.PRIVATE.name()))));
         } else {
-            queryWrapper.and(T_MEMO.VISIBILITY.in(Lists.newArrayList(Visibility.PUBLIC.name())));
+            queryWrapper.and(T_MEMO.VISIBILITY.in(List.of(Visibility.PUBLIC.name())));
         }
         TMemo tMemo = memoMapper.selectOneByQuery(queryWrapper);
         if (tMemo != null && count) {
@@ -512,7 +479,7 @@ public class MemoService {
         statisticsResponse.setTotalTags(totalTags);
         statisticsResponse.setTotalDays(totalDays);
 
-        List<Row> rows = Lists.newArrayList();
+        List<Row> rows;
         if (Objects.equals(dbType, "-sqlite")) {
             rows = Db.selectListBySql("select date(created/1000,'unixepoch') as day,count(1) as count from t_memo where " +
                             "user_id = ? and created between ? and ? group by date(created/1000,'unixepoch') order by date(created/1000,'unixepoch') desc",

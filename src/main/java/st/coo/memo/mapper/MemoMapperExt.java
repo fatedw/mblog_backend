@@ -10,12 +10,19 @@ import java.util.List;
 public interface MemoMapperExt extends BaseMapper<TMemo> {
 
     List<MemoDto> listMemos(ListMemoRequest request);
+
     long countMemos(ListMemoRequest request);
+
     int setPriority(int id);
+
     int unSetPriority(int id);
+
     int addCommentCount(int id);
+
     int addViewCount(int id);
+
     int addLikeCount(int id);
+
     int removeLikeCount(int id);
 
 }

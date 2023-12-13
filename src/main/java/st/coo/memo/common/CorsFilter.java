@@ -1,18 +1,20 @@
 package st.coo.memo.common;
 
-import com.google.common.base.Splitter;
 import jakarta.annotation.Resource;
 import jakarta.servlet.*;
 import jakarta.servlet.annotation.WebFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import st.coo.memo.service.SysConfigService;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 @Slf4j
@@ -41,9 +43,9 @@ public class CorsFilter implements Filter {
         }
         HttpServletRequest httpServletRequest = (HttpServletRequest) request;
         String origin = httpServletRequest.getHeader("Origin");
-        if (StringUtils.isNotEmpty(domains) &&
-                StringUtils.isNotEmpty(origin) &&
-                Splitter.on(",").omitEmptyStrings().splitToList(domains).contains(origin)) {
+        List<String> domainList = Arrays.stream(domains.split(",")).map(String::trim).collect(Collectors.toList());
+        if (StringUtils.hasText(domains) &&
+                StringUtils.hasText(origin) && domainList.contains(origin)) {
             // 手动设置响应头解决跨域访问
             response.setHeader("Access-Control-Allow-Origin", origin);
             response.setHeader("Access-Control-Allow-Methods", "POST, PUT, GET, OPTIONS, DELETE");

@@ -1,12 +1,13 @@
 package st.coo.memo.common;
 
 import cn.dev33.satoken.stp.StpInterface;
-import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 import st.coo.memo.entity.TUser;
 import st.coo.memo.mapper.UserMapperExt;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 @Component
@@ -17,7 +18,7 @@ public class StpInterfaceImpl implements StpInterface {
 
     @Override
     public List<String> getPermissionList(Object loginId, String loginType) {
-        return Lists.newArrayList();
+        return Collections.emptyList();
     }
 
     @Override
@@ -25,8 +26,8 @@ public class StpInterfaceImpl implements StpInterface {
         int id = Integer.parseInt(loginId.toString());
         TUser user = userMapper.selectOneById(id);
         if (user != null) {
-            return Lists.newArrayList(user.getRole());
+            return List.of(user.getRole());
         }
-        return Lists.newArrayList();
+        return Collections.emptyList();
     }
 }

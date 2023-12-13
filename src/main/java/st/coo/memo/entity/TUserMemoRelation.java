@@ -3,6 +3,7 @@ package st.coo.memo.entity;
 import com.mybatisflex.annotation.Id;
 import com.mybatisflex.annotation.KeyType;
 import com.mybatisflex.annotation.Table;
+
 import java.io.Serializable;
 import java.sql.Timestamp;
 
@@ -10,23 +11,23 @@ import java.sql.Timestamp;
 @Table(value = "t_user_memo_relation")
 public class TUserMemoRelation implements Serializable {
 
-    
+
     @Id(keyType = KeyType.Auto)
     private Integer id;
 
-    
+
     private Integer memoId;
 
-    
+
     private Integer userId;
 
-    
+
     private String favType;
 
-    
+
     private Timestamp created;
 
-    
+
     private Timestamp updated;
 
     public Integer getId() {

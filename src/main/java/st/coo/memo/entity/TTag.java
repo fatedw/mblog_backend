@@ -3,6 +3,7 @@ package st.coo.memo.entity;
 import com.mybatisflex.annotation.Id;
 import com.mybatisflex.annotation.KeyType;
 import com.mybatisflex.annotation.Table;
+
 import java.io.Serializable;
 import java.sql.Timestamp;
 
@@ -10,22 +11,22 @@ import java.sql.Timestamp;
 @Table(value = "t_tag")
 public class TTag implements Serializable {
 
-    
+
     private String name;
 
-    
+
     private Integer userId;
 
-    
+
     private Timestamp created;
 
-    
+
     private Timestamp updated;
 
-    
+
     private Integer memoCount;
 
-    
+
     @Id(keyType = KeyType.Auto)
     private Integer id;
 

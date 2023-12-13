@@ -6,11 +6,11 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import st.coo.memo.common.BizException;
 import st.coo.memo.common.LoginType;
 import st.coo.memo.common.ResponseCode;
@@ -64,7 +64,8 @@ public class UserService {
         user.setEmail(registerUserRequest.getEmail());
         user.setBio(registerUserRequest.getBio());
         user.setUsername(registerUserRequest.getUsername());
-        user.setDisplayName(StringUtils.defaultString(registerUserRequest.getDisplayName(), registerUserRequest.getUsername()));
+        String displayName = registerUserRequest.getDisplayName() != null ? registerUserRequest.getDisplayName() : registerUserRequest.getUsername();
+        user.setDisplayName(displayName);
         user.setPasswordHash(BCrypt.hashpw(registerUserRequest.getPassword()));
         user.setCreated(new Timestamp(System.currentTimeMillis()));
         user.setUpdated(new Timestamp(System.currentTimeMillis()));
@@ -79,7 +80,7 @@ public class UserService {
         TUser user = new TUser();
         user.setId(StpUtil.getLoginIdAsInt());
         BeanUtils.copyProperties(updateUserRequest, user);
-        if (StringUtils.isNotEmpty(updateUserRequest.getPassword())) {
+        if (StringUtils.hasText(updateUserRequest.getPassword())) {
             user.setPasswordHash(BCrypt.hashpw(updateUserRequest.getPassword()));
         }
         userMapper.update(user, true);
@@ -159,15 +160,15 @@ public class UserService {
         long total = memoMapperExt.selectCountByQuery(QueryWrapper.create().and(T_MEMO.USER_ID.eq(userId)));
         long liked = userMemoRelationMapperExt.selectCountByQuery(QueryWrapper.create().and(T_USER_MEMO_RELATION.USER_ID.eq(userId))
                 .and(T_USER_MEMO_RELATION.FAV_TYPE.eq("LIKE")));
-        long mentioned = commentMapperExt.countMemoByMentioned(userId,dbType);
+        long mentioned = commentMapperExt.countMemoByMentioned(userId, dbType);
         long commented = commentMapperExt.countMemoByUser(userId);
 
         TUser user = userMapper.selectOneById(StpUtil.getLoginIdAsInt());
         Timestamp lastClicked = user.getLastClickedMentioned() == null ? Timestamp.valueOf(LocalDateTime.now().minusYears(100)) : user.getLastClickedMentioned();
-        long unreadMentioned=  commentMapperExt.selectCountByQuery(QueryWrapper.create()
-                .and(T_COMMENT.MENTIONED_USER_ID.like("#"+user.getId()+","))
+        long unreadMentioned = commentMapperExt.selectCountByQuery(QueryWrapper.create()
+                .and(T_COMMENT.MENTIONED_USER_ID.like("#" + user.getId() + ","))
                 .and(T_COMMENT.CREATED.ge(lastClicked)));
 
-        return new MemoStatisticsDto(total, liked, mentioned, commented,unreadMentioned);
+        return new MemoStatisticsDto(total, liked, mentioned, commented, unreadMentioned);
     }
 }

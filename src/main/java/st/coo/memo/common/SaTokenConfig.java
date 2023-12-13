@@ -1,12 +1,9 @@
 package st.coo.memo.common;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
-import cn.dev33.satoken.jwt.StpLogicJwtForStateless;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpLogic;
 import cn.dev33.satoken.stp.StpUtil;
-import cn.hutool.json.JSON;
-import com.google.gson.Gson;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.row.Db;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +11,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import st.coo.memo.common.jwt.StpLogicJwtForStateless;
+import st.coo.memo.util.JsonUtil;
 
 import java.util.Objects;
 
@@ -32,10 +31,9 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         .and(T_DEV_TOKEN.TOKEN.eq(StpUtil.getTokenValue()))
                         .and(T_DEV_TOKEN.USER_ID.eq(StpUtil.getLoginIdAsInt()))
                 );
-                if (count == 0  ) {
-                    ResponseDTO<Void> responseDTO = ResponseDTO.fail(ResponseCode.need_login.getCode(),"api token已失效");
-                    Gson gson = new Gson();
-                    SaRouter.back(gson.toJson(responseDTO));
+                if (count == 0) {
+                    ResponseDTO<Void> responseDTO = ResponseDTO.fail(ResponseCode.need_login.getCode(), "api token已失效");
+                    SaRouter.back(JsonUtil.toJson(responseDTO));
                 }
 
             }

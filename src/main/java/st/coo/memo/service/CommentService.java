@@ -1,17 +1,15 @@
 package st.coo.memo.service;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 import st.coo.memo.common.BizException;
 import st.coo.memo.common.ResponseCode;
 import st.coo.memo.common.SysConfigConstant;
@@ -24,6 +22,7 @@ import st.coo.memo.mapper.MemoMapperExt;
 import st.coo.memo.mapper.UserMapperExt;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -79,10 +78,10 @@ public class CommentService {
 
         String content = saveCommentRequest.getContent();
         Matcher matcher = pattern.matcher(content);
-        List<MentionedUser> mentioned = Lists.newArrayList();
+        List<MentionedUser> mentioned = new ArrayList<>();
         while (matcher.find()) {
             String username = matcher.group().trim();
-            if (StringUtils.isNotEmpty(username)) {
+            if (StringUtils.hasText(username)) {
                 username = username.substring(1);
                 TUser mentionedUser = userMapperExt.selectOneByQuery(QueryWrapper.create().and(T_USER.DISPLAY_NAME.eq(username)));
                 if (mentionedUser != null) {
@@ -90,8 +89,8 @@ public class CommentService {
                 }
             }
         }
-        String names = Joiner.on(",").join(mentioned.stream().map(MentionedUser::getName).collect(Collectors.toList()));
-        String ids = Joiner.on(",#").join(mentioned.stream().map(MentionedUser::getId).collect(Collectors.toList()));
+        String names = mentioned.stream().map(MentionedUser::getName).collect(Collectors.joining(","));
+        String ids = mentioned.stream().map(MentionedUser::getId).map(String::valueOf).collect(Collectors.joining(",#"));
         TComment comment = new TComment();
         comment.setContent(content);
         comment.setMemoId(saveCommentRequest.getMemoId());
@@ -106,7 +105,7 @@ public class CommentService {
             comment.setLink(saveCommentRequest.getLink());
             if (commentApproved) {
                 comment.setApproved(0);
-            }else{
+            } else {
                 comment.setApproved(1);
             }
         }

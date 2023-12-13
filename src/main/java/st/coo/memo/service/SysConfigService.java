@@ -1,25 +1,14 @@
 package st.coo.memo.service;
 
-import cn.dev33.satoken.secure.SaBase64Util;
-import cn.hutool.crypto.SecureUtil;
-import cn.hutool.crypto.symmetric.SymmetricAlgorithm;
-import com.google.common.base.Stopwatch;
-import com.google.common.collect.Maps;
-import com.google.gson.Gson;
+import com.mybatisflex.core.audit.http.HttpUtil;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.BooleanUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.util.EntityUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import st.coo.memo.common.BizException;
 import st.coo.memo.common.ResponseCode;
 import st.coo.memo.common.SysConfigConstant;
@@ -29,13 +18,12 @@ import st.coo.memo.entity.TSysConfig;
 import st.coo.memo.entity.TUser;
 import st.coo.memo.mapper.SysConfigMapperExt;
 import st.coo.memo.mapper.UserMapperExt;
+import st.coo.memo.util.JsonUtil;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 
 import static st.coo.memo.entity.table.Tables.T_SYS_CONFIG;
 import static st.coo.memo.entity.table.Tables.T_USER;
@@ -51,21 +39,38 @@ public class SysConfigService {
     private String officialSquareUrl;
 
     @Resource
-    private HttpClient httpClient;
-
-    @Resource
     private UserMapperExt userMapperExt;
 
     @Value("${MBLOG_EMBED:}")
     private String embed;
 
     @PostConstruct
-    public void init(){
-        TSysConfig sysConfig = new TSysConfig();
-        byte[] key = SecureUtil.generateKey(SymmetricAlgorithm.AES.getValue()).getEncoded();
-        sysConfig.setValue(SaBase64Util.encodeBytesToString(key));
-        sysConfigMapper.updateByQuery(sysConfig,QueryWrapper.create().and(T_SYS_CONFIG.KEY.eq(SysConfigConstant.WEB_HOOK_TOKEN))
-                .and(T_SYS_CONFIG.VALUE.isNull().or(T_SYS_CONFIG.VALUE.eq(""))));
+    public void init() {
+        TSysConfig config = sysConfigMapper.selectOneByQuery(QueryWrapper.create().and(T_SYS_CONFIG.KEY.eq(SysConfigConstant.WEB_HOOK_TOKEN)));
+        String token = Optional.ofNullable(config).map(TSysConfig::getValue).orElse(null);
+        if (StringUtils.hasText(token)) {
+            return;
+        }
+        config = new TSysConfig();
+        config.setKey(SysConfigConstant.WEB_HOOK_TOKEN);
+        config.setValue(generateKey());
+        sysConfigMapper.insertOrUpdate(config);
+    }
+
+    private String generateKey() {
+        try {
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            // 初始化密钥生成器，默认密钥长度
+            keyGen.init(128);
+            // 生成密钥
+            SecretKey secretKey = keyGen.generateKey();
+            // 获取二进制密钥
+            byte[] binaryKey = secretKey.getEncoded();
+            // 使用Base64编码将二进制密钥转换为String
+            return Base64.getEncoder().encodeToString(binaryKey);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("生成密钥异常");
+        }
     }
 
     public void save(SaveSysConfigRequest saveSysConfigRequest) {
@@ -73,38 +78,33 @@ public class SysConfigService {
         Optional<SysConfigDto> push2OfficialSquare = saveSysConfigRequest.getItems().stream()
                 .filter(r -> Objects.equals(r.getKey(), SysConfigConstant.PUSH_OFFICIAL_SQUARE) && Objects.equals("true", r.getValue())).findFirst();
 
-        String token = getString(SysConfigConstant.WEB_HOOK_TOKEN);
 
-        if (push2OfficialSquare.isPresent()){
-
+        if (push2OfficialSquare.isPresent()) {
+            String token = getString(SysConfigConstant.WEB_HOOK_TOKEN);
             TUser admin = userMapperExt.selectOneByQuery(QueryWrapper.create().and(T_USER.ROLE.eq("ADMIN")));
             Optional<SysConfigDto> backendDomain = saveSysConfigRequest.getItems().stream()
                     .filter(r -> Objects.equals(r.getKey(), SysConfigConstant.DOMAIN) && Objects.equals("true", r.getValue())).findFirst();
             Optional<SysConfigDto> corsDomainList = saveSysConfigRequest.getItems().stream()
-                    .filter(r -> Objects.equals(r.getKey(), SysConfigConstant.CORS_DOMAIN_LIST) ).findFirst();
-            String url = officialSquareUrl+"/api/token";
-            Map<String, Object> map = Maps.newHashMap();
+                    .filter(r -> Objects.equals(r.getKey(), SysConfigConstant.CORS_DOMAIN_LIST)).findFirst();
+            String url = officialSquareUrl + "/api/token";
+            Map<String, Object> map = new HashMap<>();
             map.put("token", token);
             map.put("author", admin.getDisplayName());
             map.put("avatarUrl", admin.getAvatarUrl());
-            if (StringUtils.isNotEmpty(embed) && backendDomain.isPresent()){
+            if (StringUtils.hasText(embed) && backendDomain.isPresent()) {
                 map.put("website", backendDomain.get().getValue());
-            }else if (StringUtils.isEmpty(embed) && corsDomainList.isPresent() && StringUtils.isNotEmpty(corsDomainList.get().getValue())){
+            } else if (StringUtils.isEmpty(embed) && corsDomainList.isPresent() && StringUtils.hasText(corsDomainList.get().getValue())) {
                 map.put("website", corsDomainList.get().getValue().split(",")[0]);
             }
-            String body = new Gson().toJson(map);
+            String body = JsonUtil.toJson(map);
             log.info("注册token {},body:{}", url, body);
-            Stopwatch stopwatch = Stopwatch.createStarted();
-            HttpPost request = new HttpPost(url);
-            request.setHeader("content-type", "application/json;charset=utf8");
+            long curTime = System.currentTimeMillis();
             try {
-                request.setEntity(new StringEntity(body));
-                HttpResponse httpResponse = httpClient.execute(request);
-                String response = EntityUtils.toString(httpResponse.getEntity());
-                log.info("注册token,返回码:{},body:{},耗时:{}ms", httpResponse.getStatusLine().getStatusCode(),response, stopwatch.elapsed(TimeUnit.MILLISECONDS));
-            } catch (IOException e) {
+                String response = HttpUtil.post(url, body, null);
+                log.info("注册token,body:{},耗时:{}ms", response, System.currentTimeMillis() - curTime);
+            } catch (Exception e) {
                 log.error("注册token异常", e);
-                throw new BizException(ResponseCode.fail,"连接广场异常,请查看后台日志");
+                throw new BizException(ResponseCode.fail, "连接广场异常,请查看后台日志");
             }
         }
 
@@ -142,7 +142,7 @@ public class SysConfigService {
     public boolean getBoolean(String key) {
         String value = getString(key);
         if (value == null) return false;
-        return BooleanUtils.toBoolean(value);
+        return Boolean.valueOf(value);
     }
 
     public long getNumber(String key) {
@@ -156,6 +156,6 @@ public class SysConfigService {
         if (sysConfig == null) {
             return null;
         }
-        return StringUtils.defaultString(sysConfig.getValue(), sysConfig.getDefaultValue());
+        return sysConfig.getValue() != null ? sysConfig.getValue() : sysConfig.getDefaultValue();
     }
 }

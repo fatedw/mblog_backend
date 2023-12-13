@@ -1,6 +1,5 @@
 package st.coo.memo.service.resource;
 
-import cn.hutool.core.io.file.FileNameUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import st.coo.memo.dto.resource.UploadResourceResponse;

@@ -2,7 +2,6 @@ package st.coo.memo.service;
 
 import cn.dev33.satoken.stp.SaLoginModel;
 import cn.dev33.satoken.stp.StpUtil;
-import com.google.common.collect.Lists;
 import com.mybatisflex.core.query.QueryCondition;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +15,6 @@ import st.coo.memo.dto.token.TokenDto;
 import st.coo.memo.entity.TDevToken;
 import st.coo.memo.mapper.DevTokenMapperExt;
 
-import java.sql.Timestamp;
 import java.util.List;
 
 import static st.coo.memo.entity.table.Tables.T_DEV_TOKEN;

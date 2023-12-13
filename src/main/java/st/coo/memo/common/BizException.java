@@ -5,7 +5,7 @@ import lombok.EqualsAndHashCode;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
-public class BizException extends RuntimeException{
+public class BizException extends RuntimeException {
     private int code;
     private String msg;
 
@@ -21,7 +21,7 @@ public class BizException extends RuntimeException{
         this.msg = responseCode.getMsg();
     }
 
-    public BizException(ResponseCode responseCode,String msg) {
+    public BizException(ResponseCode responseCode, String msg) {
         super(msg);
         this.code = responseCode.getCode();
         this.msg = msg;
